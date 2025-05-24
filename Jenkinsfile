@@ -1,7 +1,7 @@
 pipeline {
     agent any
 
-    environment{
+    environment {
         GITREPO = "https://github.com/msshashank1997/Student_App.git"
         EC2_IP = "13.201.20.229"
         EC2_USERNAME = "ubuntu"
@@ -15,62 +15,64 @@ pipeline {
             }
         }
 
-        stage('Copy Files to EC2'){
+        stage('Copy Files to EC2') {
             steps {
-                sshagent(credentials:["${env.EC2_ID}"]){
-                    sh"""
+                sshagent(credentials:["${env.EC2_ID}"]) {
+                    sh """
                     scp -o StrictHostKeyChecking=no -r * ${env.EC2_USERNAME}@${env.EC2_IP}:/home/ubuntu/application
                     """
                 }
             }
         }
-        stage('EC2 System Updates'){
-             steps {
-                 sshagent(credentials:["${env.EC2_ID}"]){
-                     sh"""
-                     ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} '
-                         sudo apt update
-                         sudo apt install -y python3
-                         sudo apt install -y python3-pip
-                         cd /home/ubuntu/application
-                         sudo chmod -R 777 *
-                         '
-                     """
-                 }
-             }
-         }
         
-        stage('Install Docker'){
-                steps {
-                    sshagent(credentials:["${env.EC2_ID}"]){
-                        sh"""
-                        ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} '
-                            sudo apt install -y docker.io
-                            sudo systemctl start docker
-                            sudo systemctl enable docker
-                            sudo gpasswd -a \$USER docker
-                        '
+        stage('EC2 System Updates') {
+            steps {
+                sshagent(credentials:["${env.EC2_ID}"]) {
+                    sh """
+                    ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} '
+                        sudo apt update
+                        sudo apt install -y python3
+                        sudo apt install -y python3-pip
+                        cd /home/ubuntu/application
+                        sudo chmod -R 777 *
+                    '
+                    """
+                }
+            }
+        }
+        
+        stage('Install Docker') {
+            steps {
+                sshagent(credentials:["${env.EC2_ID}"]) {
+                    sh """
+                    ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} '
+                        sudo apt install -y docker.io
+                        sudo systemctl start docker
+                        sudo systemctl enable docker
+                        sudo gpasswd -a \$USER docker
+                        sudo apt install -y nginx
+                        sudo systemctl enable nginx
+                        sudo systemctl start nginx 
+                    '
                     """
                 }
             }
         }
 
-        
-
         stage('Install Python Dependencies') {
             steps {
                 sshagent(credentials: ["${env.EC2_ID}"]) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} '
-                            cd /home/ubuntu/application
-                            # Install Python venv package
-                            sudo apt install -y python3-venv python3-full
-                            # Create a virtual environment
-                            python3 -m venv venv
-                            # Activate virtual environment and install dependencies
-                            source venv/bin/activate
-                            pip install -r requirements.txt
-                        '
+                    ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} '
+                        cd /home/ubuntu/application
+                        # Install Python venv package
+                        sudo apt install -y python3-venv python3-full
+                        # Create a virtual environment
+                        python3 -m venv venv
+                        # Activate virtual environment and install dependencies
+                        source venv/bin/activate
+                        pip install -r requirements.txt
+                    '
                     """
                 }
             }
@@ -80,46 +82,69 @@ pipeline {
             steps {
                 sshagent(credentials: ["${env.EC2_ID}"]) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} '
-                            cd /home/ubuntu/application
-                            # Make sure docker-compose is installed
-                            if ! command -v docker-compose &> /dev/null; then
-                                echo "docker-compose not found, installing..."
-                                sudo apt-get update
-                                sudo apt-get install -y docker-compose
-                            fi
-                            # Stop any existing containers managed by docker-compose
-                            sudo docker-compose down
-                            # Start containers in detached mode
-                            sudo docker-compose up -d
-                        '
+                    ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} '
+                        cd /home/ubuntu/application
+                        # Make sure docker-compose is installed
+                        if ! command -v docker-compose &> /dev/null; then
+                            echo "docker-compose not found, installing..."
+                            sudo apt-get update
+                            sudo apt-get install -y docker-compose
+                        fi
+                        # Stop any existing containers managed by docker-compose
+                        sudo docker-compose down
+                        # Start containers in detached mode
+                        sudo docker-compose up -d
+                    '
                     """   
+                }
+            }
+        }
+
+        stage('Run Flask App') {
+            steps {
+                sshagent(credentials: ["${env.EC2_ID}"]) {
+                    sh """ 
+                    ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} '
+                        cd /home/ubuntu/application
+                        source venv/bin/activate
+                        pip install gunicorn
+                        nohup gunicorn -w 4 -b 127.0.0.1:5000 app:app > gunicorn.log 2>&1 &
+                        echo "Flask app deployed with Gunicorn"
+                    '
+                    """
                 }
             }
         }
 
         stage('Deploy Application') {
             parallel {
-                stage('Run Flask App') {
+                stage('Configure Nginx') {
                     steps {
                         sshagent(credentials: ["${env.EC2_ID}"]) {
-                            sh """ 
+                            sh """
                             ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} '
-                                cd /home/ubuntu/application
-                                # Check for existing Flask containers
-                                FLASK_CONTAINER=\$(sudo docker ps -a | grep '5000->5000' | awk '{print \$1}')
-                                if [ ! -z "\$FLASK_CONTAINER" ]; then
-                                    sudo docker stop \$FLASK_CONTAINER
-                                    sudo docker rm \$FLASK_CONTAINER
-                                fi
-                                # Run Flask application in container
-                                sudo docker run -d --name flask-app -p 5000:5000 python:3.10 bash -c "cd /app && python app.py"
-                                '
+                                sudo tee /etc/nginx/sites-available/student-app.conf > /dev/null << EOL
+server {
+    listen 80;
+    server_name ${env.EC2_IP};
+
+    location / {
+        proxy_pass http://localhost:5000;
+        proxy_set_header Host \\$host;
+        proxy_set_header X-Real-IP \\$remote_addr;
+        proxy_set_header X-Forwarded-For \\$proxy_add_x_forwarded_for;
+    }
+}
+EOL
+                                sudo ln -sf /etc/nginx/sites-available/student-app.conf /etc/nginx/sites-enabled/
+                                sudo rm -f /etc/nginx/sites-enabled/default
+                                sudo nginx -t && sudo systemctl reload nginx
+                            '
                             """
-                            
                         }
                     }
                 }
+                
                 stage('Seed Database') {
                     steps {
                         sshagent(credentials: ["${env.EC2_ID}"]) {
@@ -135,39 +160,51 @@ pipeline {
                 }
             }
         }
+
         stage('Run Tests') {
             steps {
                 sshagent(credentials: ["${env.EC2_ID}"]) {
                     sh """
                     ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} '
-                    cd /home/ubuntu/application 
-                    source venv/bin/activate
-                    
-                    # Run tests and capture exit code
-                    pytest test_app.py --maxfail=1 --disable-warnings -q
-                    TEST_EXIT_CODE=\$?
-                    
-                    # If tests failed, stop Docker containers
-                    if [ \$TEST_EXIT_CODE -ne 0 ]; then
-                        echo "Tests failed. Stopping Docker containers..."
-                        sudo docker-compose down
-                        # Or if you want to stop all containers:
-                        # sudo docker stop \$(sudo docker ps -q)
-                    fi
-                    
-                    # Return the original exit code to propagate test failure to Jenkins
-                    exit \$TEST_EXIT_CODE
+                        cd /home/ubuntu/application 
+                        source venv/bin/activate
+                        
+                        # Run tests and capture exit code
+                        pytest test_app.py --maxfail=1 --disable-warnings -q
+                        TEST_EXIT_CODE=\$?
+                        
+                        # If tests failed, stop Docker containers and Nginx
+                        if [ \$TEST_EXIT_CODE -ne 0 ]; then
+                            echo "Tests failed. Stopping services..."
+                            # Stop Docker containers
+                            sudo docker-compose down
+                            
+                            # Stop Nginx service
+                            sudo systemctl stop nginx
+                            echo "Nginx service stopped"
+                            
+                            # Stop the Flask application running with Gunicorn
+                            pkill gunicorn || echo "No Gunicorn processes to kill"
+                            
+                            # Log the failure for debugging
+                            echo "$(date): Tests failed, all services stopped" >> /home/ubuntu/application/deployment_log.txt
+                        else
+                            echo "Tests passed successfully. Services remain running."
+                        fi
+                        
+                        # Return the original exit code to propagate test failure to Jenkins
+                        exit \$TEST_EXIT_CODE
                     '
                     """
                 }
             }
         }
-        stage('file system scan'){
+        
+        stage('file system scan') {
             steps {
-                sshagent(credentials:["${env.EC2_ID}"]){
+                sshagent(credentials:["${env.EC2_ID}"]) {
                     sh """
-                    ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} 
-                        '
+                    ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} '
                         # Install Thivy if not already installed
                         if ! command -v thivy &> /dev/null; then
                             echo "Thivy not found, installing..."
@@ -175,26 +212,26 @@ pipeline {
                         fi
                         # Run Thivy to scan the file system
                         thivy fs --format -o /home/ubuntu/application/thivy_report.html 
-                        '
+                    '
                     """
-                   
                 }
             }
         }
     }
+    
     post {
         always {
             echo 'Cleaning up workspace...'
             cleanWs()
             echo 'Deployment completed successfully!'
             script {
-              // html report generation to send a mail to user
-              def jobName = env.JOB_NAME
-              def buildNumber = env.BUILD_NUMBER
-              def pipelineStatus = currentBuild.currentResult ?: 'unknown'
-              def banner = pipelineStatus == 'SUCCESS' ? 'green' : 'red'
+                // html report generation to send a mail to user
+                def jobName = env.JOB_NAME
+                def buildNumber = env.BUILD_NUMBER
+                def pipelineStatus = currentBuild.currentResult ?: 'unknown'
+                def banner = pipelineStatus == 'SUCCESS' ? 'green' : 'red'
 
-              def reportHtml = """
+                def reportHtml = """
                 <html>
                 <head>
                     <style>
@@ -219,19 +256,17 @@ pipeline {
                 </body>
                 </html>
                 """
-              
-              emailext(
-                subject: "Jenkins Pipeline: ${jobName} - Build #${buildNumber} - ${pipelineStatus}",
-                body: reportHtml,
-                mimeType: 'text/html',
-                to: 'demoteam88@gmail.com',
-                from: 'demoteam88@gmail.com',
-                replyTo: 'demoteam88@gmail.com',
-                attachmentsPattern: 'thivy_report.html'
-              )
+                
+                emailext(
+                    subject: "Jenkins Pipeline: ${jobName} - Build #${buildNumber} - ${pipelineStatus}",
+                    body: reportHtml,
+                    mimeType: 'text/html',
+                    to: 'demoteam88@gmail.com',
+                    from: 'demoteam88@gmail.com',
+                    replyTo: 'demoteam88@gmail.com',
+                    attachmentsPattern: 'thivy_report.html'
+                )
             }
         }
     }
-
 }
-

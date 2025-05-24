@@ -1,8 +1,7 @@
-import os
 import sys
 from app import app
 
-def run_server(host='0.0.0.0', port=5001):
+def run_server(host='127.0.0.1', port=5000):
     """Run the Flask server with customizable host and port."""
     try:
         # Check if port is available

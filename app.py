@@ -1,27 +1,20 @@
 from flask import Flask, jsonify, request, render_template
 from pymongo import MongoClient
-from bson import ObjectId
-from bson.regex import Regex
+
 from datetime import datetime
 
 # Initialize Flask app
 app = Flask(__name__)
 
-# fetch .env variables
-import os
-from dotenv import load_dotenv
-load_dotenv()
-
 # Connect to MongoDB
-client = MongoClient(os.getenv("MONGODB_URI"))  # Replace with your MongoDB URI  # Replace with your MongoDB URI
+client = MongoClient("mongodb+srv://demoteam88:3WwsOsXTmCfG1PLE@cluster0.gdzal.mongodb.net/")  # Replace with your MongoDB URI
 db = client["student_db"]  # Database name
 students_collection = db["students"]  # Collection name
 
 # Database functions
 def add_student(data):
     student = {
-        "first_name": data["first_name"],
-        "last_name": data["last_name"],
+        "name": data["name"],
         "dob": data["dob"],
         "class": data["class"],
         "session": data["session"],
@@ -34,8 +27,7 @@ def add_student(data):
 def get_students():
     return [{
         "_id": str(student["_id"]), 
-        "first_name": student.get("first_name", ""),
-        "last_name": student.get("last_name", ""),
+        "name": student["name"], 
         "dob": student.get("dob", ""),
         "class": student.get("class", ""),
         "session": student.get("session", ""),
@@ -43,17 +35,25 @@ def get_students():
     } for student in students_collection.find()]
 
 def get_student_by_id(student_id):
+    from bson.objectid import ObjectId
     student = students_collection.find_one({"_id": ObjectId(student_id)})
     if student:
-        student["_id"] = str(student["_id"])  # Convert ObjectId to string
-    return student
+        return {
+            "_id": str(student["_id"]), 
+            "name": student["name"], 
+            "dob": student.get("dob", ""),
+            "class": student.get("class", ""),
+            "session": student.get("session", ""),
+            "created_date": student.get("created_date", "")
+        }
+    return None
 
 def delete_student(student_id):
+    from bson.objectid import ObjectId
     result = students_collection.delete_one({"_id": ObjectId(student_id)})
     if result.deleted_count > 0:
-        return {"message": "Deleted"}  # This matches the expected message in tests
+        return {"message": "Student deleted successfully"}
     return {"error": "Student not found"}
-
 @app.route('/')
 def home():
     return render_template('home.html')
@@ -70,8 +70,8 @@ def add_student_page():
 @app.route('/api/students', methods=['POST'])
 def add():
     data = request.get_json()
-    if "first_name" not in data or "last_name" not in data or "dob" not in data or "class" not in data or "session" not in data:
-        return jsonify({"error": "Missing required fields"}), 400
+    if "name" not in data or "age" not in data:
+        return jsonify({"error": "Missing 'name' or 'age'"}), 400
     return jsonify(add_student(data)), 201
 
 @app.route('/api/students', methods=['GET'])
@@ -91,34 +91,12 @@ def delete(student_id):
 
 @app.route('/api/students/name/<string:name>', methods=['GET'])
 def get_by_name(name):
-    # Use regex to find students by first_name or last_name
-    students = students_collection.find({
-        "$or": [
-            {"first_name": {"$regex": f".*{name}.*", "$options": "i"}},
-            {"last_name": {"$regex": f".*{name}.*", "$options": "i"}}
-        ]
-    })
-    students_list = [{
-        "_id": str(student["_id"]), 
-        "first_name": student.get("first_name", ""),
-        "last_name": student.get("last_name", ""),
-        "dob": student.get("dob", ""),
-        "class": student.get("class", ""),
-        "session": student.get("session", ""),
-        "created_date": student.get("created_date", "")
-    } for student in students]
-    
+    # Use regex to find students by name
+    students = students_collection.find({"name": {"$regex": f".*{name}.*", "$options": "i"}})
+    students_list = [{"_id": str(student["_id"]), "name": student["name"], "age": student["age"]} for student in students]
     if students_list:
         return jsonify(students_list), 200
     return jsonify({"error": "No students found with the given name"}), 404
 
 if __name__ == '__main__':
-    try:
-        # Use a different port to avoid conflicts
-        # Set threaded=False to avoid some socket issues on Windows
-        app.run(debug=True, host='0.0.0.0', port=5001, threaded=False)
-    except OSError as e:
-        print(f"Socket error occurred: {e}")
-        print("Try a different port or ensure no other applications are using this port")
-    except Exception as e:
-        print(f"An error occurred: {e}")
+    app.run(debug=True, host='127.0.0.1', port=5000)

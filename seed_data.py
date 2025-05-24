@@ -1,13 +1,10 @@
 from pymongo import MongoClient
 from datetime import datetime, timedelta
 import random
-# fetch .env variables
-import os
-from dotenv import load_dotenv
-load_dotenv()
+
 
 # Connect to MongoDB
-client = MongoClient(os.getenv("MONGODB_URI"))  # Replace with your MongoDB URI
+client = MongoClient("mongodb://localhost:27017/")
 db = client["student_db"]
 students_collection = db["students"]
 
