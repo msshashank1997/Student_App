@@ -14,7 +14,8 @@ students_collection = db["students"]  # Collection name
 # Database functions
 def add_student(data):
     student = {
-        "name": data["name"],
+        "first_name": data["first_name"],
+        "last_name": data["last_name"],
         "dob": data["dob"],
         "class": data["class"],
         "session": data["session"],
@@ -25,25 +26,32 @@ def add_student(data):
     return student
 
 def get_students():
-    return [{
-        "_id": str(student["_id"]), 
-        "name": student["name"], 
-        "dob": student.get("dob", ""),
-        "class": student.get("class", ""),
-        "session": student.get("session", ""),
-        "created_date": student.get("created_date", "")
-    } for student in students_collection.find()]
+    students = []
+    for student in students_collection.find():
+        students.append({
+            "id": str(student["_id"]),
+            # Replace name field with first_name and last_name
+            "first_name": student["first_name"],
+            "last_name": student["last_name"],
+            "dob": student["dob"],
+            "class": student["class"],
+            "session": student["session"],
+            "created_date": student.get("created_date", "")
+        })
+    return students
 
 def get_student_by_id(student_id):
     from bson.objectid import ObjectId
     student = students_collection.find_one({"_id": ObjectId(student_id)})
     if student:
         return {
-            "_id": str(student["_id"]), 
-            "name": student["name"], 
-            "dob": student.get("dob", ""),
-            "class": student.get("class", ""),
-            "session": student.get("session", ""),
+            "id": str(student["_id"]),
+            # Replace name field with first_name and last_name
+            "first_name": student["first_name"],
+            "last_name": student["last_name"],
+            "dob": student["dob"],
+            "class": student["class"],
+            "session": student["session"],
             "created_date": student.get("created_date", "")
         }
     return None
@@ -53,7 +61,7 @@ def delete_student(student_id):
     result = students_collection.delete_one({"_id": ObjectId(student_id)})
     if result.deleted_count > 0:
         return {"message": "Student deleted successfully"}
-    return {"error": "Student not found"}
+    return {"error": "Student not found"}, 404
 @app.route('/')
 def home():
     return render_template('home.html')
@@ -70,8 +78,8 @@ def add_student_page():
 @app.route('/api/students', methods=['POST'])
 def add():
     data = request.get_json()
-    if "name" not in data or "age" not in data:
-        return jsonify({"error": "Missing 'name' or 'age'"}), 400
+    if "first_name" not in data or "last_name" not in data or "dob" not in data or "class" not in data or "session" not in data:
+        return jsonify({"error": "Missing required fields"}), 400
     return jsonify(add_student(data)), 201
 
 @app.route('/api/students', methods=['GET'])
@@ -91,12 +99,31 @@ def delete(student_id):
 
 @app.route('/api/students/name/<string:name>', methods=['GET'])
 def get_by_name(name):
-    # Use regex to find students by name
-    students = students_collection.find({"name": {"$regex": f".*{name}.*", "$options": "i"}})
-    students_list = [{"_id": str(student["_id"]), "name": student["name"], "age": student["age"]} for student in students]
-    if students_list:
-        return jsonify(students_list), 200
-    return jsonify({"error": "No students found with the given name"}), 404
+    # Update to search in both first_name and last_name fields
+    students = list(students_collection.find({
+        "$or": [
+            {"first_name": {"$regex": name, "$options": "i"}},
+            {"last_name": {"$regex": name, "$options": "i"}}
+        ]
+    }))
+    
+    if not students:
+        return {"error": "No students found with the given name"}, 404
+    
+    # Format the response
+    formatted_students = []
+    for student in students:
+        formatted_students.append({
+            "id": str(student["_id"]),
+            "first_name": student["first_name"],
+            "last_name": student["last_name"],
+            "dob": student["dob"],
+            "class": student["class"],
+            "session": student["session"],
+            "created_date": student.get("created_date", "")
+        })
+    
+    return jsonify(formatted_students)
 
 if __name__ == '__main__':
-    app.run(debug=True, host='127.0.0.1', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)

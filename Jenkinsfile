@@ -33,6 +33,7 @@ pipeline {
                         sudo apt update
                         sudo apt install -y python3
                         sudo apt install -y python3-pip
+                        sudo apt install -y npm
                         cd /home/ubuntu/application
                         sudo chmod -R 777 *
                     '
@@ -129,10 +130,19 @@ pipeline {
                     sh """ 
                     ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} '
                         cd /home/ubuntu/application
-                        source venv/bin/activate
-                        pip install gunicorn
-                        nohup gunicorn -w 4 -b 127.0.0.1:5000 app:app > gunicorn.log 2>&1 &
-                        echo "Flask app deployed with Gunicorn"
+                        # if docker continer is running and image is built, then run the app
+                        if sudo docker ps | grep stuident-app; then
+                            echo "Docker container for stuident-app is already running."
+                            # stop container if it is running
+                            sudo docker stop stuident-app || echo "Failed to stop existing container"
+                            sudo docker rm stuident-app || echo "Failed to remove existing container"
+                        else
+                            echo "Starting Docker container for stuident-app..."
+                            sudo docker build -t stuident-app:latest .
+                            sudo docker run -d -p 5000:5000 stuident-app:latest
+                        fi
+                        sudo docker build -t stuident-app:latest .
+                        sudo docker run -d -p 5000:5000 stuident-app:latest
                     '
                     """
                 }
