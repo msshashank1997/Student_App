@@ -141,8 +141,6 @@ pipeline {
                             sudo docker build -t stuident-app:latest .
                             sudo docker run -d -p 5000:5000 stuident-app:latest
                         fi
-                        sudo docker build -t stuident-app:latest .
-                        sudo docker run -d -p 5000:5000 stuident-app:latest
                     '
                     """
                 }
@@ -218,72 +216,42 @@ pipeline {
                 }
             }
         }
-        
-        stage('file system scan') {
-            steps {
-                sshagent(credentials:["${env.EC2_ID}"]) {
-                    sh """
-                    ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} '
-                        # Install Thivy if not already installed
-                        if ! command -v thivy &> /dev/null; then
-                            echo "Thivy not found, installing..."
-                            sudo apt-get install -y thivy
-                        fi
-                        # Run Thivy to scan the file system
-                        thivy fs --format -o /home/ubuntu/application/thivy_report.html 
-                    '
-                    """
-                }
-            }
-        }
     }
     
     post {
         always {
-            echo 'Cleaning up workspace...'
-            cleanWs()
-            echo 'Deployment completed successfully!'
             script {
-                // html report generation to send a mail to user
                 def jobName = env.JOB_NAME
                 def buildNumber = env.BUILD_NUMBER
-                def pipelineStatus = currentBuild.currentResult ?: 'unknown'
-                def banner = pipelineStatus == 'SUCCESS' ? 'green' : 'red'
+                def pipelineStatus = currentBuild.result ?: 'unknown'
+                def banner = pipelineStatus.toUpperCase() == 'SUCCESS' ? 'green' : 'red'
 
-                def reportHtml = """
-                <html>
-                <head>
-                    <style>
-                        body { font-family: Arial, sans-serif; }
-                        .banner { background-color: ${banner}; color: white; padding: 10px; text-align: center; }
-                        .content { margin: 20px; }
-                    </style>
-                </head>
-                <body>
-                    <div class="banner">
-                        <h1>Pipeline Status: ${pipelineStatus}</h1>
-                    </div>
-                    <div class="content">
-                        <h2>Job Name: ${jobName}</h2>
-                        <h3>Build Number: ${buildNumber}</h3>
-                        <p>Check the Thivy report for details.</p>
-                    </div>
-                    <div class="content">
-                        <h3>Thivy Report</h3>
-                        <a href="http://${env.EC2_IP}/home/ubuntu/application/thivy_report.html">View Thivy Report</a>
-                    </div>
-                </body>
-                </html>
-                """
-                
+                def reportHtml = """<html>
+                    <head>
+                        <style>
+                            body { font-family: Arial, sans-serif; }
+                            .banner { background-color: ${banner}; color: white; padding: 10px; text-align: center; }
+                            .content { margin: 20px; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="banner">
+                            <h1>Pipeline Status: ${pipelineStatus}</h1>
+                        </div>
+                        <div class="content">
+                            <h2>Job Name: ${jobName}</h2>
+                            <h3>Build Number: ${buildNumber}</h3>
+                            <p>Check the Thivy report for details.</p>
+                        </div>
+                    </body>
+                    </html>"""
                 emailext(
                     subject: "Jenkins Pipeline: ${jobName} - Build #${buildNumber} - ${pipelineStatus}",
                     body: reportHtml,
                     mimeType: 'text/html',
                     to: 'demoteam88@gmail.com',
                     from: 'demoteam88@gmail.com',
-                    replyTo: 'demoteam88@gmail.com',
-                    attachmentsPattern: 'thivy_report.html'
+                    replyTo: 'demoteam88@gmail.com'
                 )
             }
         }
