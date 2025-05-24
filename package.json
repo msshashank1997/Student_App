@@ -1,0 +1,12 @@
+{
+  "name": "student-data-import",
+  "version": "1.0.0",
+  "description": "Import student data into MongoDB",
+  "main": "importStudentData.js",
+  "scripts": {
+    "import": "node importStudentData.js"
+  },
+  "dependencies": {
+    "mongodb": "^5.1.0"
+  }
+}

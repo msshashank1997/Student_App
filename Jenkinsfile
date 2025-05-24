@@ -50,9 +50,6 @@ pipeline {
                         sudo systemctl start docker
                         sudo systemctl enable docker
                         sudo gpasswd -a \$USER docker
-                        sudo apt install -y nginx
-                        sudo systemctl enable nginx
-                        sudo systemctl start nginx 
                     '
                     """
                 }
@@ -90,10 +87,36 @@ pipeline {
                             sudo apt-get update
                             sudo apt-get install -y docker-compose
                         fi
+                        
+                        # Check if port 27017 is in use by any process
+                        if sudo lsof -i :27017 | grep LISTEN; then
+                            echo "Port 27017 is already in use. Stopping existing process..."
+                            # Find container using port 27017
+                            CONTAINER_ID=\$(sudo docker ps -q --filter "publish=27017")
+                            if [ ! -z "\$CONTAINER_ID" ]; then
+                                echo "Stopping Docker container using port 27017..."
+                                sudo docker stop \$CONTAINER_ID
+                            else
+                                # If not a Docker container, find and kill the process
+                                PID=\$(sudo lsof -t -i:27017)
+                                if [ ! -z "\$PID" ]; then
+                                    echo "Killing process \$PID that is using port 27017..."
+                                    sudo kill -9 \$PID
+                                fi
+                            fi
+                        fi
+                        
                         # Stop any existing containers managed by docker-compose
                         sudo docker-compose down
+                        
                         # Start containers in detached mode
                         sudo docker-compose up -d
+                        
+                        # Verify MongoDB container is running
+                        if ! sudo docker ps | grep mongo-studentdb; then
+                            echo "Error: MongoDB container failed to start"
+                            exit 1
+                        fi
                     '
                     """   
                 }
@@ -116,50 +139,20 @@ pipeline {
             }
         }
 
-        stage('Deploy Application') {
-            parallel {
-                stage('Configure Nginx') {
-                    steps {
-                        sshagent(credentials: ["${env.EC2_ID}"]) {
-                            sh """
-                            ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} '
-                                sudo tee /etc/nginx/sites-available/student-app.conf > /dev/null << EOL
-server {
-    listen 80;
-    server_name ${env.EC2_IP};
-
-    location / {
-        proxy_pass http://localhost:5000;
-        proxy_set_header Host \\$host;
-        proxy_set_header X-Real-IP \\$remote_addr;
-        proxy_set_header X-Forwarded-For \\$proxy_add_x_forwarded_for;
-    }
-}
-EOL
-                                sudo ln -sf /etc/nginx/sites-available/student-app.conf /etc/nginx/sites-enabled/
-                                sudo rm -f /etc/nginx/sites-enabled/default
-                                sudo nginx -t && sudo systemctl reload nginx
-                            '
-                            """
-                        }
-                    }
-                }
                 
-                stage('Seed Database') {
-                    steps {
-                        sshagent(credentials: ["${env.EC2_ID}"]) {
-                            sh """
-                            ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} '
-                                cd /home/ubuntu/application
-                                source venv/bin/activate
-                                python seed_data.py 
-                            '
-                            """
+        stage('Seed Database') {
+            steps {
+                sshagent(credentials: ["${env.EC2_ID}"]) {
+                    sh """
+                    ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} '
+                        cd /home/ubuntu/application
+                        sudo npm install
+                        sudo npm run import
+                        '
+                        """
                         }
                     }
                 }
-            }
-        }
 
         stage('Run Tests') {
             steps {
@@ -173,21 +166,37 @@ EOL
                         pytest test_app.py --maxfail=1 --disable-warnings -q
                         TEST_EXIT_CODE=\$?
                         
-                        # If tests failed, stop Docker containers and Nginx
+                        # If tests failed, stop services
                         if [ \$TEST_EXIT_CODE -ne 0 ]; then
                             echo "Tests failed. Stopping services..."
                             # Stop Docker containers
                             sudo docker-compose down
                             
-                            # Stop Nginx service
-                            sudo systemctl stop nginx
-                            echo "Nginx service stopped"
+                            # Stop the Flask application running with Gunicorn on port 5000
+                            echo "Stopping Flask application on port 5000..."
+                            # Find processes using port 5000
+                            PORT_PIDS=\$(lsof -t -i:5000 || echo "")
+                            if [ ! -z "\$PORT_PIDS" ]; then
+                                echo "Killing processes using port 5000: \$PORT_PIDS"
+                                kill -9 \$PORT_PIDS || echo "Failed to kill some processes"
+                            fi
                             
-                            # Stop the Flask application running with Gunicorn
-                            pkill gunicorn || echo "No Gunicorn processes to kill"
+                            # Also try to find gunicorn processes as a fallback
+                            GUNICORN_PIDS=\$(pgrep gunicorn || echo "")
+                            if [ ! -z "\$GUNICORN_PIDS" ]; then
+                                echo "Killing gunicorn processes: \$GUNICORN_PIDS"
+                                kill -9 \$GUNICORN_PIDS || echo "Failed to kill some gunicorn processes"
+                            fi
+                            
+                            # Verify port is free
+                            if lsof -i:5000 >/dev/null 2>&1; then
+                                echo "WARNING: Port 5000 is still in use after cleanup attempt"
+                            else
+                                echo "Port 5000 successfully released"
+                            fi
                             
                             # Log the failure for debugging
-                            echo "$(date): Tests failed, all services stopped" >> /home/ubuntu/application/deployment_log.txt
+                            echo "\$(date): Tests failed, all services stopped" >> /home/ubuntu/application/deployment_log.txt
                         else
                             echo "Tests passed successfully. Services remain running."
                         fi

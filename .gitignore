@@ -8,3 +8,6 @@ student_data.py
 docker-compose.override.yml
 .vscode/
 *.log
+node_modules/*
+__pycache__
+.pytest_cache

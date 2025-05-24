@@ -1,23 +1,7 @@
-from pymongo import MongoClient
+import json
 from datetime import datetime, timedelta
 import random
-
-
-# Connect to MongoDB
-client = MongoClient("mongodb://localhost:27017/")
-db = client["student_db"]
-students_collection = db["students"]
-
-# Create the database if it doesn't exist
-if "student_db" not in client.list_database_names():
-    db = client.create_database("student_db")
-
-# create the collection if it doesn't exist
-if "students" not in db.list_collection_names():
-    students_collection = db.create_collection("students")
-
-# Clear existing data (optional)
-students_collection.delete_many({})
+import os
 
 # Generate random dates within a range
 def random_date(start_date, end_date):
@@ -52,6 +36,7 @@ for i in range(50):  # Create 50 sample students
     student = {
         "first_name": first_name,
         "last_name": last_name,
+        "name": f"{first_name} {last_name}",  # Adding full name for display
         "dob": dob.strftime("%Y-%m-%d"),
         "class": str(random.randint(1, 12)),  # Classes 1 through 12
         "session": random.choice(sessions),
@@ -59,10 +44,12 @@ for i in range(50):  # Create 50 sample students
     }
     sample_students.append(student)
 
-# Insert the sample data
-result = students_collection.insert_many(sample_students)
+# Write data to JSON file
+output_file = "student_data.json"
+with open(output_file, 'w') as file:
+    json.dump(sample_students, file, indent=4)
 
-print(f"Successfully inserted {len(result.inserted_ids)} student records")
+print(f"Successfully generated {len(sample_students)} student records and saved to {output_file}")
 print("\n" + "="*80)
 print(f"{'Name':<25} {'Date of Birth':<15} {'Class':<8} {'Academic Session':<15} {'Registration Date':<15}")
 print("="*80)
@@ -72,11 +59,14 @@ print("="*80)
 print("...")
 
 # Display total count
-count = students_collection.count_documents({})
-print(f"\nTotal students in database: {count}")
+print(f"\nTotal students in JSON file: {len(sample_students)}")
 print("\nFields for each student record:")
 print("- Name")
 print("- Date of Birth (DOB)")
 print("- Class")
 print("- Academic Session")
 print("- Registration Date")
+
+# Provide information about MongoDB insertion
+print("\nIf you need to import this data into MongoDB, run:")
+print(f"mongoimport --db student_db --collection students --file {output_file} --jsonArray")
