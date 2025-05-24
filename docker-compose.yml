@@ -2,18 +2,13 @@ version: '3.8'
 
 services:
   studentdatabase:
-    build: ./mongodb
-    container_name: studentdatabase
+    image: mongo
+    container_name: mongo-studentdb
     ports:
-      - 27017:27017
+      - "27017:27017"
+    volumes:
+      - studentdb_data:/data/db
 
-  studentdata:
-    build:
-      dockerfile: Dockerfile
-    container_name: studentdata
-    ports:
-      - 5000:5000
-    environment:
-      - MONGO_URI=mongodb://studentdatabase:27017/studentdata
-      - PORT=5000
+volumes:
+  studentdb_data:   
     
