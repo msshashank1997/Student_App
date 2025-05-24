@@ -1,0 +1,68 @@
+body {
+    background-color: #f8f9fa;
+}
+
+.jumbotron {
+    background-color: #f8f9fa;
+    padding: 2rem;
+    border-radius: 0.3rem;
+}
+
+.card {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+}
+
+.navbar {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.table {
+    background-color: white;
+    box-shadow: 0 2px 3px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary {
+    background-color: #0d6efd;
+}
+
+.btn-success {
+    background-color: #198754;
+}
+
+.delete-btn {
+    padding: 0.25rem 0.5rem;
+}
+
+/* New styles for date picker and form fields */
+.form-date {
+    position: relative;
+}
+
+.date-picker {
+    cursor: pointer;
+}
+
+.form-label {
+    font-weight: 500;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.student-info {
+    font-size: 0.9rem;
+    color: #6c757d;
+    margin-top: 0.25rem;
+}
+
+/* Improved table styling for new fields */
+.table th {
+    background-color: #f1f5f9;
+}

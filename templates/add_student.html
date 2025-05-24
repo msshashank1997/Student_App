@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}Add Student - Student Management System{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <h2>Add New Student</h2>
+        <form id="add-student-form">
+            <div class="mb-3">
+                <label for="first_name" class="form-label">First Name</label>
+                <input type="text" class="form-control" id="first_name" name="first_name" required>
+            </div>
+            
+            <div class="mb-3">
+                <label for="last_name" class="form-label">Last Name</label>
+                <input type="text" class="form-control" id="last_name" name="last_name" required>
+            </div>
+            
+            <div class="mb-3">
+                <label for="dob" class="form-label">Date of Birth</label>
+                <input type="date" class="form-control" id="dob" name="dob" required>
+            </div>
+            
+            <div class="mb-3">
+                <label for="class" class="form-label">Class</label>
+                <select class="form-control" id="class" name="class" required>
+                    <option value="">Select Class</option>
+                    <option value="1">Class 1</option>
+                    <option value="2">Class 2</option>
+                    <option value="3">Class 3</option>
+                    <option value="4">Class 4</option>
+                    <option value="5">Class 5</option>
+                    <option value="6">Class 6</option>
+                    <option value="7">Class 7</option>
+                    <option value="8">Class 8</option>
+                    <option value="9">Class 9</option>
+                    <option value="10">Class 10</option>
+                    <option value="11">Class 11</option>
+                    <option value="12">Class 12</option>
+                </select>
+            </div>
+            
+            <div class="mb-3">
+                <label for="session" class="form-label">Academic Session</label>
+                <select class="form-control" id="session" name="session" required>
+                    <option value="">Select Session</option>
+                    <option value="2022-2023">2022-2023</option>
+                    <option value="2023-2024">2023-2024</option>
+                    <option value="2024-2025">2024-2025</option>
+                </select>
+            </div>
+            
+            <div class="mb-3">
+                <label for="created_date" class="form-label">Registration Date</label>
+                <input type="date" class="form-control" id="created_date" name="created_date">
+            </div>
+            
+            <button type="submit" class="btn btn-primary">Add Student</button>
+        </form>
+        
+        <div class="alert alert-success mt-3" id="success-alert" style="display: none;">
+            Student added successfully!
+        </div>
+        <div class="alert alert-danger mt-3" id="error-alert" style="display: none;">
+            Error adding student. Please try again.
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('add-student-form');
+        const successAlert = document.getElementById('success-alert');
+        const errorAlert = document.getElementById('error-alert');
+        
+        // Set default value for created_date to today's date
+        const today = new Date();
+        const formattedDate = today.toISOString().substr(0, 10);
+        document.getElementById('created_date').value = formattedDate;
+        
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const first_name = document.getElementById('first_name').value.trim();
+            const last_name = document.getElementById('last_name').value.trim();
+            const dob = document.getElementById('dob').value;
+            const studentClass = document.getElementById('class').value;
+            const session = document.getElementById('session').value;
+            const created_date = document.getElementById('created_date').value || formattedDate;
+            
+            const data = {
+                first_name: first_name,
+                last_name: last_name,
+                dob: dob,
+                class: studentClass,
+                session: session,
+                created_date: created_date
+            };
+            
+            fetch('/api/students', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                form.reset();
+                document.getElementById('created_date').value = formattedDate; // Reset to today
+                successAlert.style.display = 'block';
+                errorAlert.style.display = 'none';
+                
+                // Hide success message after 3 seconds
+                setTimeout(() => {
+                    successAlert.style.display = 'none';
+                }, 3000);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                errorAlert.style.display = 'block';
+                successAlert.style.display = 'none';
+            });
+        });
+    });
+</script>
+{% endblock %}

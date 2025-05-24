@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Student Management System{% endblock %}
+
+{% block content %}
+<div class="jumbotron">
+    <h1 class="display-4">Welcome to the Student Management System</h1>
+    <p class="lead">Manage students effectively with our simple and intuitive interface.</p>
+    <hr class="my-4">
+    <p>Use the navigation menu to access the different features of the application.</p>
+    <div class="row mt-5">
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">View Students</h5>
+                    <p class="card-text">See all students in the database, search, and manage records.</p>
+                    <a href="/web/students" class="btn btn-primary">View Students</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Add New Student</h5>
+                    <p class="card-text">Add a new student to the database with name and age.</p>
+                    <a href="/web/add_student" class="btn btn-success">Add Student</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
