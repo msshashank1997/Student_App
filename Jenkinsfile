@@ -82,17 +82,15 @@ pipeline {
                     sh """
                     ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} '
                         cd /home/ubuntu/application
-                        # Make sure docker-compose is installed
+
                         if ! command -v docker-compose &> /dev/null; then
                             echo "docker-compose not found, installing..."
                             sudo apt-get update
                             sudo apt-get install -y docker-compose
                         fi
                         
-                        # Check if port 27017 is in use by any process
                         if sudo lsof -i :27017 | grep LISTEN; then
                             echo "Port 27017 is already in use. Stopping existing process..."
-                            # Find container using port 27017
                             CONTAINER_ID=\$(sudo docker ps -q --filter "publish=27017")
                             if [ ! -z "\$CONTAINER_ID" ]; then
                                 echo "Stopping Docker container using port 27017..."
@@ -107,42 +105,16 @@ pipeline {
                             fi
                         fi
                         
-                        # Stop any existing containers managed by docker-compose
                         sudo docker-compose down
                         
-                        # Start containers in detached mode
                         sudo docker-compose up -d
                         
-                        # Verify MongoDB container is running
                         if ! sudo docker ps | grep mongo-studentdb; then
                             echo "Error: MongoDB container failed to start"
                             exit 1
                         fi
                     '
                     """   
-                }
-            }
-        }
-
-        stage('Run Flask App') {
-            steps {
-                sshagent(credentials: ["${env.EC2_ID}"]) {
-                    sh """ 
-                    ssh -o StrictHostKeyChecking=no ${env.EC2_USERNAME}@${env.EC2_IP} '
-                        cd /home/ubuntu/application
-                        # if docker continer is running and image is built, then run the app
-                        if sudo docker ps | grep stuident-app; then
-                            echo "Docker container for stuident-app is already running."
-                            # stop container if it is running
-                            sudo docker stop stuident-app || echo "Failed to stop existing container"
-                            sudo docker rm stuident-app || echo "Failed to remove existing container"
-                        else
-                            echo "Starting Docker container for stuident-app..."
-                            sudo docker build -t stuident-app:latest .
-                            sudo docker run -d -p 5000:5000 stuident-app:latest
-                        fi
-                    '
-                    """
                 }
             }
         }

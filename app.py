@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request, render_template
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 import sys
+import os
 from datetime import datetime
 
 # Initialize Flask app
@@ -9,14 +10,30 @@ app = Flask(__name__)
 
 # Connect to MongoDB with error handling
 try:
-    client = MongoClient("mongodb://localhost:27017/", serverSelectionTimeoutMS=5000)
-    # Verify connection is successful
-    client.server_info()
-    db = client["student_db"]  # Database name
-    students_collection = db["students"]  # Collection name
-    print("Successfully connected to MongoDB")
+    # Use Docker-compatible connection string with fallback options
+    # When running in Docker, use the service name defined in docker-compose
+    # or the special 'host.docker.internal' DNS to access host from container
+    mongo_host = "mongo" if "DOCKER_ENV" in os.environ else "host.docker.internal"
+    
+    # Try different connection options in sequence
+    try:
+        # First try the Docker service name
+        client = MongoClient(f"mongodb://{mongo_host}:27017", 
+                           serverSelectionTimeoutMS=2000)
+        client.server_info()  # This will raise an exception if connection fails
+    except Exception:
+        # If Docker service name fails, try host.docker.internal 
+        mongo_host = "host.docker.internal"
+        client = MongoClient(f"mongodb://{mongo_host}:27017", 
+                           serverSelectionTimeoutMS=2000)
+        client.server_info()
+        
+    print(f"Successfully connected to MongoDB at {mongo_host}:27017")
+    db = client["student_db"]
+    students_collection = db["students"]
 except (ConnectionFailure, ServerSelectionTimeoutError) as e:
     print(f"Failed to connect to MongoDB: {e}")
+    print("Please ensure MongoDB is running and accessible")
     sys.exit(1)
 
 # Database functions
@@ -116,7 +133,7 @@ def get_by_name(name):
     }))
     
     if not students:
-        return {"error": "No students found with the given name"}, 404
+        return jsonify({"error": "No students found with the given name"}), 404
     
     # Format the response
     formatted_students = []

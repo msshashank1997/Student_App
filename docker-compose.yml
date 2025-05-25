@@ -1,14 +1,31 @@
-version: '3.8'
+version: '3'
 
 services:
-  studentdatabase:
-    image: mongo
+  mongo:
+    image: mongo:latest
     container_name: mongo-studentdb
     ports:
       - "27017:27017"
     volumes:
-      - studentdb_data:/data/db
+      - mongo-data:/data/db
+    networks:
+      - student-network
+      
+  app:
+    build: .
+    container_name: student-app
+    environment:
+      - DOCKER_ENV=true
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mongo
+    networks:
+      - student-network
+
+networks:
+  student-network:
+    driver: bridge
 
 volumes:
-  studentdb_data:   
-    
+  mongo-data:
