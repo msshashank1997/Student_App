@@ -320,6 +320,9 @@ pipeline {
 }
 ```
 
+![image](https://github.com/user-attachments/assets/e3154293-431f-4dcf-b74a-af1a16735534)
+
+![image](https://github.com/user-attachments/assets/1257a665-7d40-440d-8601-25a407b3c972)
 
 ## API Endpoints
 
