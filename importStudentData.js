@@ -2,7 +2,7 @@ const fs = require('fs');
 const { MongoClient } = require('mongodb');
 
 // MongoDB connection string - update this with your MongoDB URI
-const uri = 'mongodb://localhost:27017';
+const uri = 'mongodb://localhost:27017/';
 const dbName = 'studentDB';
 const collectionName = 'students';
 
