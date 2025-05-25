@@ -1,15 +1,23 @@
 from flask import Flask, jsonify, request, render_template
 from pymongo import MongoClient
-
+from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+import sys
 from datetime import datetime
 
 # Initialize Flask app
 app = Flask(__name__)
 
-# Connect to MongoDB
-client = MongoClient("mongodb://localhost:27017/")  # Replace with your MongoDB URI
-db = client["student_db"]  # Database name
-students_collection = db["students"]  # Collection name
+# Connect to MongoDB with error handling
+try:
+    client = MongoClient("mongodb://localhost:27017/", serverSelectionTimeoutMS=5000)
+    # Verify connection is successful
+    client.server_info()
+    db = client["student_db"]  # Database name
+    students_collection = db["students"]  # Collection name
+    print("Successfully connected to MongoDB")
+except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+    print(f"Failed to connect to MongoDB: {e}")
+    sys.exit(1)
 
 # Database functions
 def add_student(data):
