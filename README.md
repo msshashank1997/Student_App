@@ -378,11 +378,9 @@ When the Jenkinsfile runs successfully, the following actions are performed on t
    - Schedule: Every Sunday at midnight (`0 0 * * 0`)
    - To set up this cron job on EC2:
 
-
-
      ![alt text](image-2.png)
-  
      ![alt text](image-1.png)
+     ![alt text](image-4.png)
 
 ## API Endpoints
 
@@ -479,6 +477,8 @@ To set up Slack or email notifications:
 
 ![GitHub Actions Workflow](https://docs.github.com/assets/images/help/repository/actions-tab.png)
 
-     ![alt text](image-2.png)
+![alt text](image-2.png)
   
-     ![alt text](image-1.png)
+![alt text](image-3.png)
+
+![alt text](image-4.png)
