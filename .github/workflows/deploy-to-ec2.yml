@@ -63,7 +63,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           script: |
-            cd /home/ubuntu/application
+            cd /home/ubuntu/application/Student_App
             # Install Python venv package
             sudo apt install -y python3-venv python3-full
             # Create a virtual environment
@@ -80,7 +80,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           script: |
-            cd /home/ubuntu/application
+            cd /home/ubuntu/application/Student_App
             if ! command -v docker-compose &> /dev/null; then
                 echo "docker-compose not found, installing..."
                 sudo apt-get update
@@ -120,7 +120,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           script: |
-            cd /home/ubuntu/application
+            cd /home/ubuntu/application/Student_App
             sudo npm install
             sudo npm run import
           
@@ -134,7 +134,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           script: |
-            cd /home/ubuntu/application 
+            cd /home/ubuntu/application/Student_App
             source venv/bin/activate
             
             # Run tests and capture exit code
