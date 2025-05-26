@@ -1050,11 +1050,9 @@ To make this workflow function correctly, you need to set up the following secre
 4. **`EMAIL_USERNAME`** - Gmail address for sending notifications
 5. **`EMAIL_PASSWORD`** - App password for Gmail (not your regular password)
 6. **`TOKEN`** - Automatically provided by GitHub Actions, used for creating PRs
+7. **`PRODUCTION_EC2_IP`** - IP address of your production environment
 
 ## Setup Recommendations:
-
-1. Instead of hardcoding the production EC2 IP (`13.201.20.229`), consider adding it as:
-   - **`PRODUCTION_EC2_IP`** - IP address of your production environment
 
 2. For email notifications to work with Gmail:
    - Use an app-specific password generated from your Google Account
