@@ -234,7 +234,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     
     env:
-      EC2_IP: ${secrets.STAGING_EC2_IP}
+      EC2_IP: ${{ secrets.STAGING_EC2_IP }}
       EC2_USERNAME: "ubuntu"
 
     steps:
