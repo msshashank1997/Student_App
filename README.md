@@ -1127,3 +1127,5 @@ To set up Slack or email notifications:
 
 ![alt text](image-4.png)
 
+1. Once the pipeline succeeds on the staging branch, it automatically generates a Pull Request to merge changes to the main branch.
+2. After the PR is reviewed and approved, the Production environment deployment will start automatically.
