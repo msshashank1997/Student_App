@@ -1,30 +1,36 @@
-name: Deploy to EC2
+name: Student App Deployment
 
 on:
   push:
-    branches: [ main ]
+    branches: 
+      - main
+      - staging
   pull_request:
     branches: [ main ]
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:
-  deploy:
+  deploy-to-staging:
+    name: Deploy to Staging
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/staging'
     
     env:
-      EC2_IP: "35.154.46.198"
+      EC2_IP: ${{ secrets.STAGING_EC2_IP }}
       EC2_USERNAME: "ubuntu"
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup SSH
+      - name: Setup SSH and Deploy to Staging
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ env.EC2_IP }}
           username: ${{ env.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
           port: 22
           script: |
             # Ensure the application directory exists
@@ -41,26 +47,24 @@ jobs:
             sudo systemctl enable docker
             sudo gpasswd -a $USER docker
       
-      - name: clone the repository
+      - name: Clone the repository to staging
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ env.EC2_IP }}
           username: ${{ env.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
           port: 22
           script: |
-            # Clone the repository if it doesn't exist
-            if [ ! -d "/home/ubuntu/application/.git" ]; then
-              cd /home/ubuntu/application
-              git clone https://github.com/msshashank1997/Student_App.git
+            cd /home/ubuntu/application
+            rm -rf Student_App || true
+            git clone -b staging https://github.com/msshashank1997/Student_App.git
 
-
-      - name: Install Python Dependencies
+      - name: Install Python Dependencies on Staging
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ env.EC2_IP }}
           username: ${{ env.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
           port: 22
           script: |
             cd /home/ubuntu/application/Student_App
@@ -72,15 +76,16 @@ jobs:
             source venv/bin/activate
             pip install -r requirements.txt
 
-      - name: Build and Start Docker Containers
+      - name: Build Docker Image on Staging
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ env.EC2_IP }}
           username: ${{ env.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
           port: 22
           script: |
             cd /home/ubuntu/application/Student_App
+            
             if ! command -v docker-compose &> /dev/null; then
                 echo "docker-compose not found, installing..."
                 sudo apt-get update
@@ -110,31 +115,28 @@ jobs:
                 echo "Error: MongoDB container failed to start"
                 exit 1
             fi
-          
 
-      - name: Seed Database
+      - name: Seed Database on Staging
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ env.EC2_IP }}
           username: ${{ env.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
           port: 22
           script: |
             cd /home/ubuntu/application/Student_App
             sudo npm install
             sudo npm run import
-          
 
-      - name: Run Tests
-        id: run_tests
+      - name: Run Tests on Staging
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ env.EC2_IP }}
           username: ${{ env.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
           port: 22
           script: |
-            cd /home/ubuntu/application/Student_App
+            cd /home/ubuntu/application/Student_App 
             source venv/bin/activate
             
             # Run tests and capture exit code
@@ -163,18 +165,458 @@ jobs:
                     kill -9 $GUNICORN_PIDS || echo "Failed to kill some gunicorn processes"
                 fi
                 
-                # Verify port is free
-                if lsof -i:5000 >/dev/null 2>&1; then
-                    echo "WARNING: Port 5000 is still in use after cleanup attempt"
-                else
-                    echo "Port 5000 successfully released"
-                fi
-                
-                # Log the failure for debugging
                 echo "$(date): Tests failed, all services stopped" >> /home/ubuntu/application/deployment_log.txt
+                exit $TEST_EXIT_CODE
             else
                 echo "Tests passed successfully. Services remain running."
             fi
+
+      - name: Add Staging Environment Marker
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.EC2_IP }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          port: 22
+          script: |
+            echo "ENVIRONMENT=staging" > /home/ubuntu/application/Student_App/.env
+            echo "Deployed to STAGING on $(date)" >> /home/ubuntu/application/deployment_history.log
+
+      - name: Notify Staging Deployment
+        if: always()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "Staging Deployment - Student App - ${{ job.status }}"
+          html_body: |
+            <html>
+            <head>
+              <style>
+                body { font-family: Arial, sans-serif; }
+                .banner { background-color: ${{ job.status == 'success' && 'green' || 'red' }}; color: white; padding: 10px; text-align: center; }
+                .content { margin: 20px; }
+              </style>
+            </head>
+            <body>
+              <div class="banner">
+                <h1>Staging Deployment Status: ${{ job.status }}</h1>
+              </div>
+              <div class="content">
+                <h2>Repository: ${{ github.repository }}</h2>
+                <h3>Workflow: ${{ github.workflow }}</h3>
+                <h3>Branch: staging</h3>
+                <p>Check GitHub for details.</p>
+              </div>
+            </body>
+            </html>
+          to: demoteam88@gmail.com
+          from: demoteam88@gmail.com
+          content_type: text/html
+
+  deploy-to-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && github.event.action == 'published'
+    
+    env:
+      EC2_IP: ${{ secrets.PRODUCTION_EC2_IP }}
+      EC2_USERNAME: "ubuntu"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main  # Deploy from main branch when a release is published
+
+      - name: Setup SSH and Deploy to Production
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.EC2_IP }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: 22
+          script: |
+            # Ensure the application directory exists
+            if [ ! -d "/home/ubuntu/application" ]; then
+              mkdir -p /home/ubuntu/application
+            fi
+            sudo apt update
+            sudo apt install -y python3
+            sudo apt install -y python3-pip
+            sudo apt install -y npm
+            sudo apt install -y git
+            sudo apt install -y docker.io
+            sudo systemctl start docker
+            sudo systemctl enable docker
+            sudo gpasswd -a $USER docker
+      
+      - name: Clone the repository from main branch
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.EC2_IP }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: 22
+          script: |
+            cd /home/ubuntu/application
+            rm -rf Student_App || true
+            git clone -b main https://github.com/msshashank1997/Student_App.git
             
-            # Return the original exit code to propagate test failure
-            exit $TEST_EXIT_CODE
+      - name: Install Python Dependencies on Production
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.EC2_IP }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: 22
+          script: |
+            cd /home/ubuntu/application/Student_App
+            # Install Python venv package
+            sudo apt install -y python3-venv python3-full
+            # Create a virtual environment
+            python3 -m venv venv
+            # Activate virtual environment and install dependencies
+            source venv/bin/activate
+            pip install -r requirements.txt
+
+      - name: Build Docker Image on Production
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.EC2_IP }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: 22
+          script: |
+            cd /home/ubuntu/application/Student_App
+            
+            if ! command -v docker-compose &> /dev/null; then
+                echo "docker-compose not found, installing..."
+                sudo apt-get update
+                sudo apt-get install -y docker-compose
+            fi
+            
+            if sudo lsof -i :27017 | grep LISTEN; then
+                echo "Port 27017 is already in use. Stopping existing process..."
+                CONTAINER_ID=$(sudo docker ps -q --filter "publish=27017")
+                if [ ! -z "$CONTAINER_ID" ]; then
+                    echo "Stopping Docker container using port 27017..."
+                    sudo docker stop $CONTAINER_ID
+                else
+                    # If not a Docker container, find and kill the process
+                    PID=$(sudo lsof -t -i:27017)
+                    if [ ! -z "$PID" ]; then
+                        echo "Killing process $PID that is using port 27017..."
+                        sudo kill -9 $PID
+                    fi
+                fi
+            fi
+            
+            sudo docker-compose down
+            sudo docker-compose up -d
+            
+            if ! sudo docker ps | grep mongo-studentdb; then
+                echo "Error: MongoDB container failed to start"
+                exit 1
+            fi
+
+      - name: Seed Database on Production
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.EC2_IP }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: 22
+          script: |
+            cd /home/ubuntu/application/Student_App
+            sudo npm install
+            sudo npm run import
+
+      - name: Run Tests on Production
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.EC2_IP }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: 22
+          script: |
+            cd /home/ubuntu/application/Student_App 
+            source venv/bin/activate
+            
+            # Run tests and capture exit code
+            pytest test_app.py --maxfail=1 --disable-warnings -q
+            TEST_EXIT_CODE=$?
+            
+            # If tests failed, stop services
+            if [ $TEST_EXIT_CODE -ne 0 ]; then
+                echo "Tests failed. Stopping services..."
+                # Stop Docker containers
+                sudo docker-compose down
+                
+                # Stop the Flask application running with Gunicorn on port 5000
+                echo "Stopping Flask application on port 5000..."
+                PORT_PIDS=$(lsof -t -i:5000 || echo "")
+                if [ ! -z "$PORT_PIDS" ]; then
+                    echo "Killing processes using port 5000: $PORT_PIDS"
+                    kill -9 $PORT_PIDS || echo "Failed to kill some processes"
+                fi
+                
+                GUNICORN_PIDS=$(pgrep gunicorn || echo "")
+                if [ ! -z "$GUNICORN_PIDS" ]; then
+                    echo "Killing gunicorn processes: $GUNICORN_PIDS"
+                    kill -9 $GUNICORN_PIDS || echo "Failed to kill some gunicorn processes"
+                fi
+                
+                echo "$(date): Tests failed, all services stopped" >> /home/ubuntu/application/deployment_log.txt
+                exit $TEST_EXIT_CODE
+            else
+                echo "Tests passed successfully. Services remain running."
+            fi
+
+      - name: Add Production Environment Marker
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.EC2_IP }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: 22
+          script: |
+            echo "ENVIRONMENT=production" > /home/ubuntu/application/Student_App/.env
+            echo "Deployed to PRODUCTION from main branch, release version ${{ github.event.release.tag_name }} on $(date)" >> /home/ubuntu/application/deployment_history.log
+
+      - name: Notify Production Deployment
+        if: always()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "PRODUCTION Deployment - Student App - ${{ job.status }}"
+          html_body: |
+            <html>
+            <head>
+              <style>
+                body { font-family: Arial, sans-serif; }
+                .banner { background-color: ${{ job.status == 'success' && 'green' || 'red' }}; color: white; padding: 10px; text-align: center; }
+                .content { margin: 20px; }
+              </style>
+            </head>
+            <body>
+              <div class="banner">
+                <h1>PRODUCTION Deployment Status: ${{ job.status }}</h1>
+              </div>
+              <div class="content">
+                <h2>Repository: ${{ github.repository }}</h2>
+                <h3>Release: ${{ github.event.release.tag_name }}</h3>
+                <h3>Branch: main</h3>
+                <p>Check GitHub for details.</p>
+              </div>
+            </body>
+            </html>
+          to: demoteam88@gmail.com
+          from: demoteam88@gmail.com
+          content_type: text/html
+
+  deploy:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    env:
+      EC2_IP: "13.201.20.229"  # Using direct IP or add to secrets
+      EC2_USERNAME: "ubuntu"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.EC2_IP }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            # Ensure the application directory exists
+            if [ ! -d "/home/ubuntu/application" ]; then
+              mkdir -p /home/ubuntu/application
+            fi
+            sudo apt update
+            sudo apt install -y python3
+            sudo apt install -y python3-pip
+            sudo apt install -y npm
+            sudo apt install -y git
+            sudo apt install -y docker.io
+            sudo systemctl start docker
+            sudo systemctl enable docker
+            sudo gpasswd -a $USER docker
+
+      - name: Clone the repository to development
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.EC2_IP }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            cd /home/ubuntu/application
+            rm -rf Student_App || true
+            git clone -b main https://github.com/msshashank1997/Student_App.git
+
+      - name: Install Python Dependencies on Development
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.EC2_IP }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            cd /home/ubuntu/application/Student_App
+            # Install Python venv package
+            sudo apt install -y python3-venv python3-full
+            # Create a virtual environment
+            python3 -m venv venv
+            # Activate virtual environment and install dependencies
+            source venv/bin/activate
+            pip install -r requirements.txt
+
+      - name: Build Docker Image on Development
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.EC2_IP }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            cd /home/ubuntu/application/Student_App
+            
+            if ! command -v docker-compose &> /dev/null; then
+                echo "docker-compose not found, installing..."
+                sudo apt-get update
+                sudo apt-get install -y docker-compose
+            fi
+            
+            if sudo lsof -i :27017 | grep LISTEN; then
+                echo "Port 27017 is already in use. Stopping existing process..."
+                CONTAINER_ID=$(sudo docker ps -q --filter "publish=27017")
+                if [ ! -z "$CONTAINER_ID" ]; then
+                    echo "Stopping Docker container using port 27017..."
+                    sudo docker stop $CONTAINER_ID
+                else
+                    # If not a Docker container, find and kill the process
+                    PID=$(sudo lsof -t -i:27017)
+                    if [ ! -z "$PID" ]; then
+                        echo "Killing process $PID that is using port 27017..."
+                        sudo kill -9 $PID
+                    fi
+                fi
+            fi
+            
+            sudo docker-compose down
+            sudo docker-compose up -d
+            
+            if ! sudo docker ps | grep mongo-studentdb; then
+                echo "Error: MongoDB container failed to start"
+                exit 1
+            fi
+
+      - name: Seed Database on Development
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.EC2_IP }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            cd /home/ubuntu/application/Student_App
+            sudo npm install
+            sudo npm run import
+
+      - name: Run Tests on Development
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.EC2_IP }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            cd /home/ubuntu/application/Student_App 
+            source venv/bin/activate
+            
+            # Run tests and capture exit code
+            pytest test_app.py --maxfail=1 --disable-warnings -q
+            TEST_EXIT_CODE=$?
+            
+            # If tests failed, stop services
+            if [ $TEST_EXIT_CODE -ne 0 ]; then
+                echo "Tests failed. Stopping services..."
+                # Stop Docker containers
+                sudo docker-compose down
+                
+                # Stop the Flask application running with Gunicorn on port 5000
+                echo "Stopping Flask application on port 5000..."
+                PORT_PIDS=$(lsof -t -i:5000 || echo "")
+                if [ ! -z "$PORT_PIDS" ]; then
+                    echo "Killing processes using port 5000: $PORT_PIDS"
+                    kill -9 $PORT_PIDS || echo "Failed to kill some processes"
+                fi
+                
+                GUNICORN_PIDS=$(pgrep gunicorn || echo "")
+                if [ ! -z "$GUNICORN_PIDS" ]; then
+                    echo "Killing gunicorn processes: $GUNICORN_PIDS"
+                    kill -9 $GUNICORN_PIDS || echo "Failed to kill some gunicorn processes"
+                fi
+                
+                echo "$(date): Tests failed, all services stopped" >> /home/ubuntu/application/deployment_log.txt
+                exit $TEST_EXIT_CODE
+            else
+                echo "Tests passed successfully. Services remain running."
+            fi
+
+      - name: Add Development Environment Marker
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.EC2_IP }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            echo "ENVIRONMENT=development" > /home/ubuntu/application/Student_App/.env
+            echo "Deployed to DEVELOPMENT on $(date)" >> /home/ubuntu/application/deployment_history.log
+
+      - name: Notify Development Deployment
+        if: always()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "Development Deployment - Student App - ${{ job.status }}"
+          html_body: |
+            <html>
+            <head>
+              <style>
+                body { font-family: Arial, sans-serif; }
+                .banner { background-color: ${{ job.status == 'success' && 'green' || 'red' }}; color: white; padding: 10px; text-align: center; }
+                .content { margin: 20px; }
+              </style>
+            </head>
+            <body>
+              <div class="banner">
+                <h1>Development Deployment Status: ${{ job.status }}</h1>
+              </div>
+              <div class="content">
+                <h2>Repository: ${{ github.repository }}</h2>
+                <h3>Branch: main</h3>
+                <p>Check GitHub for details.</p>
+              </div>
+            </body>
+            </html>
+          to: demoteam88@gmail.com
+          from: demoteam88@gmail.com
+          content_type: text/html
