@@ -56,7 +56,7 @@ jobs:
           port: 22
           script: |
             cd /home/ubuntu/application
-            rm -rf Student_App || true
+            sudo rm -rf Student_App || true
             git clone -b staging https://github.com/msshashank1997/Student_App.git
 
       - name: Install Python Dependencies on Staging
