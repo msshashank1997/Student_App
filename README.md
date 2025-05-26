@@ -410,92 +410,26 @@ This project can also be configured with GitHub Actions to automate:
 
 1. Create `.github/workflows/flask-app-ci.yml` in your repository:
 
-```yaml
-name: Flask App CI/CD
-
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    
-    services:
-      mongodb:
-        image: mongo
-        ports:
-          - 27017:27017
-    
-    steps:
-      - uses: actions/checkout@v2
-      
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.9'
-          
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pytest
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-      
-      - name: Run tests
-        run: |
-          pytest test_app.py
-  
-  build-and-push:
-    needs: test
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
-    steps:
-      - uses: actions/checkout@v2
-      
-      - name: Login to Docker Hub
-        uses: docker/login-action@v1
-        with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-      
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v2
-        with:
-          context: .
-          push: true
-          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/student-app:latest
-  
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            cd /home/ubuntu/application
-            docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/student-app:latest
-            docker-compose down
-            docker-compose up -d
-```
-
 ### Required Secrets for GitHub Actions
 
-Set these secrets in your GitHub repository:
+To make this work, you'll need to add these secrets to your GitHub repository:
 
-1. `DOCKER_HUB_USERNAME` - Your Docker Hub username
-2. `DOCKER_HUB_ACCESS_TOKEN` - Docker Hub access token
-3. `EC2_HOST` - EC2 instance IP address
-4. `EC2_USERNAME` - EC2 instance username (typically 'ubuntu' for Ubuntu instances)
-5. `EC2_SSH_KEY` - Private SSH key for accessing your EC2 instance
+1. EC2_SSH_KEY - SSH key for development environment (already exists)
+2. STAGING_EC2_IP - IP address of your staging server
+3. STAGING_SSH_KEY - SSH key for staging environment
+4. PRODUCTION_EC2_IP - IP address of your production server
+5. PRODUCTION_SSH_KEY - SSH key for production environment
+
+# Create and checkout a new staging branch from main
+git checkout -b staging main
+
+# Push the new branch to remote
+git push -u origin staging
+
+# Commit and push your changes
+git add .
+git commit -m "Initial staging setup"
+git push origin staging
 
 ## Workflow Details
 
@@ -514,99 +448,7 @@ Set these secrets in your GitHub repository:
 - Pulls the latest Docker image
 - Updates the running application using docker-compose
 
-## Running Actions Through Staging and Main
 
-### Branch-Based Deployments
-
-Configure your workflow to handle different environments:
-
-```yaml
-on:
-  push:
-    branches: 
-      - main
-      - staging
-  pull_request:
-    branches: 
-      - main
-      - staging
-```
-
-### Environment-Specific Configurations
-
-```yaml
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
-    
-    steps:
-      - name: Set environment variables
-        run: |
-          if [[ $GITHUB_REF == 'refs/heads/main' ]]; then
-            echo "ENV=production" >> $GITHUB_ENV
-            echo "API_URL=https://api.example.com" >> $GITHUB_ENV
-          else
-            echo "ENV=staging" >> $GITHUB_ENV
-            echo "API_URL=https://staging-api.example.com" >> $GITHUB_ENV
-          fi
-      
-      - name: Deploy to environment
-        run: |
-          echo "Deploying to $ENV environment"
-          echo "Using API URL: $API_URL"
-```
-
-### Manual Deployments
-
-1. Configure workflow_dispatch with environment input:
-
-```yaml
-on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'staging'
-        type: choice
-        options:
-          - staging
-          - production
-```
-
-2. Use the input in your workflow:
-
-```yaml
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'staging' }}
-    
-    steps:
-      - name: Deploy based on manual input
-        run: echo "Deploying to ${{ github.event.inputs.environment }} environment"
-```
-
-### Commit Messages to Trigger Specific Actions
-
-You can set up your workflow to respond to specific commit message patterns:
-
-```yaml
-jobs:
-  conditional_job:
-    runs-on: ubuntu-latest
-    if: "contains(github.event.head_commit.message, '[deploy]')"
-    steps:
-      - name: Run deployment triggered by commit message
-        run: echo "Deployment triggered by commit message containing [deploy]"
-```
-
-Common commit message tags:
-- `[skip ci]` - Skip CI pipeline completely
-- `[deploy]` - Trigger deployment
-- `[staging]` - Deploy only to staging
-- `[hotfix]` - Apply emergency fixes
 
 ## Monitoring Your Workflow
 
