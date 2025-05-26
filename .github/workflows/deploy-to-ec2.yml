@@ -226,13 +226,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup GitHub CLI
+        run: |
+          gh --version || true
+          sudo apt-get update
+          sudo apt-get install -y gh
+
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v5
-        with:
-          token: ${{ secrets.TOKEN }}
-          commit-message: "Merge staging to main after successful deployment"
-          title: "Promote: Merge staging to main"
-          body: |
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN }}
+          PR_TITLE: "Promote: Merge staging to main"
+          PR_BODY: |
             ## Automated PR from Staging to Main
             
             This PR was automatically created after successful deployment to the staging environment.
@@ -240,12 +244,24 @@ jobs:
             ### Changes include:
             - All updates from staging branch that passed testing
             - Ready for review and merge to main
-          branch: staging
-          base: main
-          labels: |
-            automated-pr
-            ready-for-review
-          draft: false
+        run: |
+          # Check if a PR already exists from staging to main
+          existing_pr=$(gh pr list --base main --head staging --json number --jq '.[0].number')
+          
+          if [ -z "$existing_pr" ]; then
+            echo "Creating new PR from staging to main..."
+            gh pr create \
+              --base main \
+              --head staging \
+              --title "$PR_TITLE" \
+              --body "$PR_BODY" \
+              --label "automated-pr" \
+              --label "ready-for-review"
+            echo "PR created successfully!"
+          else
+            echo "PR from staging to main already exists with number #$existing_pr. Skipping creation."
+          fi
+
 
   deploy-to-main:
     name: Deploy to Main
